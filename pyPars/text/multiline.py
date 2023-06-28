@@ -47,14 +47,8 @@ class MultilineText:
             return self.text[pos.abspos]
     
     def startswith(self, prefix: str, pos: MultilinePos) -> MultilineMatch | None:
-        if self.text.startswith(prefix, pos):
-            return MultilineMatch((pos, pos+len(prefix)))
-        else:
-            return None
-
-    def startswith(self, prefix: str, pos: MultilinePos) -> MultilineMatch | None:
         if self.text.startswith(prefix, pos.abspos):
-            return self.shiftedMultilinePos(pos, len(prefix))
+            return MultilineMatch((pos, self.shiftedMultilinePos(pos, len(prefix))))
         else:
             return None
 
