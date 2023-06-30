@@ -1,26 +1,15 @@
 import re
 from dataclasses import dataclass
+from . import Text
 
 @dataclass
 class StringMatch:
     span: tuple[int,int]
 
-class StringText:
+class StringText(Text[int, str, re.Pattern, re.Match]):
 
     def __init__(self, text: str) -> None:
         self.text = text
-    
-    def GetPositionType(self) -> type[int]:
-        return int
-    
-    def GetNativeType(self) -> type[str]:
-        return str
-    
-    def GetPatternType(self) -> re.Pattern:
-        return re.Pattern
-    
-    def GetMatchType(self) -> type[re.Match]:
-        return re.Match
     
     def getStartPos(self) -> int:
         return 0

@@ -8,87 +8,13 @@ from dataclasses import dataclass, field
 from typing import Union
 from abc import ABCMeta, abstractmethod
 
-from . import text
+from .text import Text, NatT, PosT, PatternT, MatchT
+from .syntax_object import SyntaxObject
+from .rules import Opt, OneOrMore, ZeroOrMore, Attr, Selection, GrammarClass, GrammarRule
 
-@dataclass
-class Opt:
-    rule: "GrammarRule"
-
-@dataclass
-class OneOrMore:
-    rule: "GrammarRule"
-
-@dataclass
-class ZeroOrMore:
-    rule: "GrammarRule"
-
-@dataclass
-class Attr:
-    name: str
-    attrClasses: Union["GrammarClass", list["GrammarClass"], Union["GrammarClass","GrammarClass"]]
-
-class Selection:
-    def __init__(self, options: list["GrammarRule"] = []) -> None:
-        self.options = options
-
-    def __or__(self, right: "GrammarRule"):
-        if isinstance(right, Selection):
-            return Selection(self.options + right.options)
-        else:
-            return Selection(self.options + [right])
-
-    def __ror__(self, left: "GrammarRule"):
-        if isinstance(left, Selection):
-            return Selection(left.options + self.options)
-        else:
-            return Selection([left] + self.options)
-
-'''
-A metaclass for Grammar types
-'''
-class GrammarClass(type[SyntaxObject]):
-    def __new__(cls, name, bases, attrs):
-        if not any(issubclass(base, SyntaxObject) for base in bases):
-            raise TypeError(f"Class '{name}' is not a subclass of 'AttributeStorage'")
-        return super().__new__(cls, name, bases, attrs)
-    
-    def __init__(cls, name, bases, dict):
-        r = super().__init__(name, bases, dict)
-        if not hasattr(cls, 'grammar'):
-            raise NotImplementedError(f"Class '{name}' doesn't have a 'grammar' class variable set")
-        grammar: GrammarRule
-        return r
-
-    def __or__(cls, right: "GrammarRule"):
-        if isinstance(right, Selection):
-            return Selection([cls] + right.options)
-        else:
-            return Selection([cls, right])
-
-    def __ror__(cls, left: "GrammarRule"):
-        if isinstance(left, Selection):
-            return Selection(left.options + [cls])
-        else:
-            return Selection([left, cls])
-
-
-GrammarRule = Union[
-    None,
-    text.NatT,
-    text.PatternT,
-    tuple["GrammarRule"], # For concatenation
-    list["GrammarRule"], # For multiple options
-    Selection, # Also for multiple options (Union of grammars)
-    Opt, # ? operator
-    OneOrMore, # + operator
-    ZeroOrMore, # * operator
-    Attr, # For named attributes
-    dict[str, Union["GrammarClass", list["GrammarClass"]]], # Also for named attributes (dict with a single key)
-    GrammarClass # Class containing a 'grammar' class variable
-]
     
 
-def parse(mytext: text.Text, pos: text.PosT, rule: GrammarRule, attrStore: SyntaxObject | None = None) -> text.PosT | None:
+def parse(mytext: Text, pos: PosT, rule: GrammarRule, attrStore: SyntaxObject | None = None) -> text.PosT | None:
     PosT = mytext.GetPositionType()
     NatT = mytext.GetNativeType()
     PatternT = mytext.GetPatternType()
@@ -128,7 +54,7 @@ def parse(mytext: text.Text, pos: text.PosT, rule: GrammarRule, attrStore: Synta
 
             if newpos is not None:
                 if attrStore is not None:
-                    extendAttributeStore(attrStore, tempAttrStore)
+                    attrStore.extend(tempAttrStore)
                 return newpos
         return None
     elif isinstance(rule, Opt):
@@ -137,7 +63,7 @@ def parse(mytext: text.Text, pos: text.PosT, rule: GrammarRule, attrStore: Synta
 
         if pos is not None:
             if attrStore is not None: 
-                extendAttributeStore(attrStore, tempAttrStore)
+                attrStore.extend(tempAttrStore)
             return pos
         else:
             return 0
@@ -153,7 +79,7 @@ def parse(mytext: text.Text, pos: text.PosT, rule: GrammarRule, attrStore: Synta
         while pos is not None:
             # store previous attributes
             if attrStore is not None: 
-                extendAttributeStore(attrStore, tempAttrStore)
+                attrStore.extend(tempAttrStore)
 
             # try new rule instance
             tempAttrStore = SyntaxObject(set())
@@ -165,7 +91,7 @@ def parse(mytext: text.Text, pos: text.PosT, rule: GrammarRule, attrStore: Synta
         while pos is not None:
             # store previous attributes
             if attrStore is not None: 
-                extendAttributeStore(attrStore, tempAttrStore)
+                attrStore.extend(tempAttrStore)
 
             # try new rule instance
             tempAttrStore = SyntaxObject(set())
