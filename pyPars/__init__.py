@@ -1,28 +1,34 @@
-'''
+"""
 A simple recursive-descent parser that is easy to define.
 Currently, only string parsing is supported
-'''
-
-import re
-from dataclasses import dataclass, field
-from typing import Union
-from abc import ABCMeta, abstractmethod
-
+"""
 from .text import Text, NatT, PosT, PatternT, MatchT
 from .syntax_object import SyntaxObject
-from .rules import Opt, OneOrMore, ZeroOrMore, Attr, Selection, GrammarClass, GrammarRule
+from .rules import (
+    Opt,
+    OneOrMore,
+    ZeroOrMore,
+    Attr,
+    Selection,
+    GrammarClass,
+    GrammarRule,
+)
 
-    
 
-def parse(mytext: Text, pos: PosT, rule: GrammarRule, attrStore: SyntaxObject | None = None) -> text.PosT | None:
+def parse(
+    mytext: Text[NatT, PosT, PatternT, MatchT],
+    pos: PosT,
+    rule: GrammarRule,
+    attrStore: SyntaxObject | None = None,
+) -> PosT | None:
     PosT = mytext.GetPositionType()
     NatT = mytext.GetNativeType()
     PatternT = mytext.GetPatternType()
     MatchT = mytext.GetMatchType()
 
-    '''
+    """
     Returns the end position of the successful match or None if it failed
-    '''
+    """
     if rule is None:
         return pos
     elif isinstance(rule, NatT):
@@ -62,7 +68,7 @@ def parse(mytext: Text, pos: PosT, rule: GrammarRule, attrStore: SyntaxObject | 
         pos = parse(mytext, pos, rule.rule, tempAttrStore)
 
         if pos is not None:
-            if attrStore is not None: 
+            if attrStore is not None:
                 attrStore.extend(tempAttrStore)
             return pos
         else:
@@ -74,11 +80,11 @@ def parse(mytext: Text, pos: PosT, rule: GrammarRule, attrStore: SyntaxObject | 
         # first must match
         if pos is None:
             return None
-        
+
         # others are optional
         while pos is not None:
             # store previous attributes
-            if attrStore is not None: 
+            if attrStore is not None:
                 attrStore.extend(tempAttrStore)
 
             # try new rule instance
@@ -90,7 +96,7 @@ def parse(mytext: Text, pos: PosT, rule: GrammarRule, attrStore: SyntaxObject | 
 
         while pos is not None:
             # store previous attributes
-            if attrStore is not None: 
+            if attrStore is not None:
                 attrStore.extend(tempAttrStore)
 
             # try new rule instance
@@ -104,19 +110,25 @@ def parse(mytext: Text, pos: PosT, rule: GrammarRule, attrStore: SyntaxObject | 
             grammarAttributeName: str = list(rule.keys())[0]
             attrClasses = rule[grammarAttributeName]
 
-        if isinstance(attrClasses, list) and all(isinstance(cls, GrammarClass) for cls in attrClasses):
+        if isinstance(attrClasses, list) and all(
+            isinstance(cls, GrammarClass) for cls in attrClasses
+        ):
             optionsrule = Selection(attrClasses)
-        elif isinstance(attrClasses, Selection) and all(isinstance(cls, GrammarClass) for cls in attrClasses.options):
+        elif isinstance(attrClasses, Selection) and all(
+            isinstance(cls, GrammarClass) for cls in attrClasses.options
+        ):
             optionsrule = attrClasses
         elif isinstance(attrClasses, GrammarClass):
             optionsrule = Selection([attrClasses])
         else:
-            raise ValueError(f"An attribute rule's attrClasses must be of GrammarClass, list[GrammarClass], or GrammarRuleSelection[GrammarClass] type.")
+            raise ValueError(
+                f"An attribute rule's attrClasses must be of GrammarClass, list[GrammarClass], or GrammarRuleSelection[GrammarClass] type."
+            )
 
         for attrClass in optionsrule.options:
             subAttrStore: SyntaxObject = attrClass()
             subAttrStore.span = (pos, -1)
-            
+
             newpos = parse(mytext, pos, attrClass.grammar, subAttrStore)
 
             if newpos is not None:
