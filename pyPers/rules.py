@@ -83,9 +83,9 @@ GrammarRule = Union[
     NatT,
     PatternT,
     tuple["GrammarRule"],  # For concatenation
-    list["GrammarRule"],  # For multiple options
-    Selection,  # Also for multiple options (Union of grammars)
+    Selection,  # For multiple options (Union of grammars)
     Opt,  # ? operator
+    list["GrammarRule"],  # Also ? operator
     OneOrMore,  # + operator
     ZeroOrMore,  # * operator
     Attr,  # For named attributes
