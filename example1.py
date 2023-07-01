@@ -1,5 +1,5 @@
-from pyPars import *
-from pyPars.text.string import *
+from pyPers import *
+from pyPers.text.string import *
 import json
 
 class WS(SyntaxObject, metaclass = GrammarClass):
