@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Union, Callable
 from .text import Text, NatT, PosT, PatternT, MatchT
 from .syntax_object import SyntaxObject
 
@@ -22,11 +22,21 @@ class ZeroOrMore:
 @dataclass
 class Attr:
     name: str
-    attrClasses: "AttributeClass"
+    attrClasses: "GrammarClass|Selection"
+
+def atr(name: str) -> Callable[["GrammarClass|Selection"], Attr]:
+    return lambda attrClasses: Attr(name, attrClasses)
+
 
 class Selection:
-    def __init__(self, options: list["GrammarRule"] = []) -> None:
-        self.options = options
+    def __init__(self, option1: "GrammarRule|Selection", *otheroptions: "GrammarRule|Selection") -> None:
+        self.options = (option1.options if isinstance(option1, Selection) else [option1]) + [
+            opt 
+            for options in [
+                opt.options if isinstance(opt, Selection) else [opt] for opt in otheroptions
+            ]
+            for opt in options 
+        ]
 
     def __or__(self, right: "GrammarRule"):
         if isinstance(right, Selection):
@@ -73,9 +83,7 @@ class GrammarClass(type[SyntaxObject]):
 
 
 AttributeClass = Union[
-    "GrammarClass",
-    list["GrammarClass"],
-    Union["GrammarClass", "GrammarClass"]
+    "GrammarClass", list["GrammarClass"], Union["GrammarClass", "GrammarClass"]
 ]
 
 GrammarRule = Union[
@@ -89,8 +97,5 @@ GrammarRule = Union[
     OneOrMore,  # + operator
     ZeroOrMore,  # * operator
     Attr,  # For named attributes
-    dict[
-        str, Union[GrammarClass, list[GrammarClass]]
-    ],  # Also for named attributes (dict with a single key)
     GrammarClass,  # Class containing a 'grammar' class variable
 ]

@@ -9,6 +9,7 @@ from .rules import (
     OneOrMore,
     ZeroOrMore,
     Attr,
+    atr,
     Selection,
     GrammarClass,
     GrammarRule,
@@ -48,7 +49,7 @@ def parse(
             if pos is None:
                 return None
         return pos
-    elif isinstance(rule, list) or isinstance(rule, Selection):
+    elif isinstance(rule, Selection):
         if isinstance(rule, list):
             optionsrule = Selection(rule)
         elif isinstance(rule, Selection):
@@ -63,9 +64,13 @@ def parse(
                     attrStore.extend(tempAttrStore)
                 return newpos
         return None
-    elif isinstance(rule, Opt):
+    elif isinstance(rule, Opt) or isinstance(rule, list):
+        if isinstance(rule, Opt):
+            nonOptRule = rule.rule
+        else:
+            nonOptRule = tuple(rule)
         tempAttrStore = SyntaxObject(set())
-        pos = parse(mytext, pos, rule.rule, tempAttrStore)
+        pos = parse(mytext, pos, nonOptRule, tempAttrStore)
 
         if pos is not None:
             if attrStore is not None:
@@ -102,27 +107,17 @@ def parse(
             # try new rule instance
             tempAttrStore = SyntaxObject(set())
             pos = parse(mytext, pos, rule.rule, tempAttrStore)
-    elif isinstance(rule, Attr) or isinstance(rule, dict):
-        if isinstance(rule, Attr):
-            grammarAttributeName = rule.name
-            attrClasses = rule.attrClasses
-        elif isinstance(rule, dict):
-            grammarAttributeName: str = list(rule.keys())[0]
-            attrClasses = rule[grammarAttributeName]
+    elif isinstance(rule, Attr):
 
-        if isinstance(attrClasses, list) and all(
-            isinstance(cls, GrammarClass) for cls in attrClasses
+        if isinstance(rule.attrClasses, Selection) and all(
+            isinstance(cls, GrammarClass) for cls in rule.attrClasses.options
         ):
-            optionsrule = Selection(attrClasses)
-        elif isinstance(attrClasses, Selection) and all(
-            isinstance(cls, GrammarClass) for cls in attrClasses.options
-        ):
-            optionsrule = attrClasses
-        elif isinstance(attrClasses, GrammarClass):
-            optionsrule = Selection([attrClasses])
+            optionsrule = rule.attrClasses
+        elif isinstance(rule.attrClasses, GrammarClass):
+            optionsrule = Selection([rule.attrClasses])
         else:
             raise ValueError(
-                f"An attribute rule's attrClasses must be of GrammarClass, list[GrammarClass], or GrammarRuleSelection[GrammarClass] type."
+                f"An attribute rule's attrClasses must be of GrammarClass or Selection[GrammarClass] type."
             )
 
         for attrClass in optionsrule.options:
@@ -134,12 +129,12 @@ def parse(
             if newpos is not None:
                 subAttrStore.span = (subAttrStore.span[0], newpos)
 
-                if grammarAttributeName in attrStore.grammarAttributeNames:
-                    grammarAttr: list = getattr(attrStore, grammarAttributeName)
+                if rule.name in attrStore.grammarAttributeNames:
+                    grammarAttr: list = getattr(attrStore, rule.name)
                 else:
                     grammarAttr = []
-                    attrStore.grammarAttributeNames.add(grammarAttributeName)
-                    setattr(attrStore, grammarAttributeName, grammarAttr)
+                    attrStore.grammarAttributeNames.add(rule.name)
+                    setattr(attrStore, rule.name, grammarAttr)
                 grammarAttr.append(subAttrStore)
 
                 return newpos
