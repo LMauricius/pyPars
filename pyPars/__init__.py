@@ -10,7 +10,7 @@ from .rules import (
     ZeroOrMore,
     Attr,
     atr,
-    Selection,
+    SelectionFirst,
     GrammarClass,
     GrammarRule,
 )
@@ -49,10 +49,10 @@ def parse(
             if pos is None:
                 return None
         return pos
-    elif isinstance(rule, Selection):
+    elif isinstance(rule, SelectionFirst):
         if isinstance(rule, list):
-            optionsrule = Selection(rule)
-        elif isinstance(rule, Selection):
+            optionsrule = SelectionFirst(rule)
+        elif isinstance(rule, SelectionFirst):
             optionsrule = rule
 
         for ruleoption in optionsrule.options:
@@ -109,12 +109,12 @@ def parse(
             pos = parse(mytext, pos, rule.rule, tempAttrStore)
     elif isinstance(rule, Attr):
 
-        if isinstance(rule.attrClasses, Selection) and all(
+        if isinstance(rule.attrClasses, SelectionFirst) and all(
             isinstance(cls, GrammarClass) for cls in rule.attrClasses.options
         ):
             optionsrule = rule.attrClasses
         elif isinstance(rule.attrClasses, GrammarClass):
-            optionsrule = Selection([rule.attrClasses])
+            optionsrule = SelectionFirst([rule.attrClasses])
         else:
             raise ValueError(
                 f"An attribute rule's attrClasses must be of GrammarClass or Selection[GrammarClass] type."

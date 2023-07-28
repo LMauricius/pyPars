@@ -22,33 +22,33 @@ class ZeroOrMore:
 @dataclass
 class Attr:
     name: str
-    attrClasses: "GrammarClass|Selection"
+    attrClasses: "GrammarClass|SelectionFirst"
 
-def atr(name: str) -> Callable[["GrammarClass|Selection"], Attr]:
+def atr(name: str) -> Callable[["GrammarClass|SelectionFirst"], Attr]:
     return lambda attrClasses: Attr(name, attrClasses)
 
 
-class Selection:
-    def __init__(self, option1: "GrammarRule|Selection", *otheroptions: "GrammarRule|Selection") -> None:
-        self.options = (option1.options if isinstance(option1, Selection) else [option1]) + [
+class SelectionFirst:
+    def __init__(self, option1: "GrammarRule|SelectionFirst", *otheroptions: "GrammarRule|SelectionFirst") -> None:
+        self.options = (option1.options if isinstance(option1, SelectionFirst) else [option1]) + [
             opt 
             for options in [
-                opt.options if isinstance(opt, Selection) else [opt] for opt in otheroptions
+                opt.options if isinstance(opt, SelectionFirst) else [opt] for opt in otheroptions
             ]
             for opt in options 
         ]
 
     def __or__(self, right: "GrammarRule"):
-        if isinstance(right, Selection):
-            return Selection(self.options + right.options)
+        if isinstance(right, SelectionFirst):
+            return SelectionFirst(self.options + right.options)
         else:
-            return Selection(self.options + [right])
+            return SelectionFirst(self.options + [right])
 
     def __ror__(self, left: "GrammarRule"):
-        if isinstance(left, Selection):
-            return Selection(left.options + self.options)
+        if isinstance(left, SelectionFirst):
+            return SelectionFirst(left.options + self.options)
         else:
-            return Selection([left] + self.options)
+            return SelectionFirst([left] + self.options)
 
 
 class GrammarClass(type[SyntaxObject]):
@@ -70,16 +70,16 @@ class GrammarClass(type[SyntaxObject]):
         grammar: "GrammarRule"
 
     def __or__(cls, right: "GrammarRule"):
-        if isinstance(right, Selection):
-            return Selection([cls] + right.options)
+        if isinstance(right, SelectionFirst):
+            return SelectionFirst([cls] + right.options)
         else:
-            return Selection([cls, right])
+            return SelectionFirst([cls, right])
 
     def __ror__(cls, left: "GrammarRule"):
-        if isinstance(left, Selection):
-            return Selection(left.options + [cls])
+        if isinstance(left, SelectionFirst):
+            return SelectionFirst(left.options + [cls])
         else:
-            return Selection([left, cls])
+            return SelectionFirst([left, cls])
 
 
 AttributeClass = Union[
@@ -91,7 +91,7 @@ GrammarRule = Union[
     NatT,
     PatternT,
     tuple["GrammarRule"],  # For concatenation
-    Selection,  # For multiple options (Union of grammars)
+    SelectionFirst,  # For multiple options (Union of grammars)
     Opt,  # ? operator
     list["GrammarRule"],  # Also ? operator
     OneOrMore,  # + operator
