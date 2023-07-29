@@ -38,17 +38,61 @@ class SelectionFirst:
             for opt in options 
         ]
 
-    def __or__(self, right: "GrammarRule"):
+    def __div__(self, right: "GrammarRule"):
         if isinstance(right, SelectionFirst):
             return SelectionFirst(self.options + right.options)
         else:
             return SelectionFirst(self.options + [right])
 
-    def __ror__(self, left: "GrammarRule"):
+    def __rdiv__(self, left: "GrammarRule"):
         if isinstance(left, SelectionFirst):
             return SelectionFirst(left.options + self.options)
         else:
             return SelectionFirst([left] + self.options)
+
+class SelectionShortest:
+    def __init__(self, option1: "GrammarRule|SelectionShortest", *otheroptions: "GrammarRule|SelectionShortest") -> None:
+        self.options = (option1.options if isinstance(option1, SelectionShortest) else [option1]) + [
+            opt 
+            for options in [
+                opt.options if isinstance(opt, SelectionShortest) else [opt] for opt in otheroptions
+            ]
+            for opt in options 
+        ]
+
+    def __or__(self, right: "GrammarRule"):
+        if isinstance(right, SelectionShortest):
+            return SelectionShortest(self.options + right.options)
+        else:
+            return SelectionShortest(self.options + [right])
+
+    def __ror__(self, left: "GrammarRule"):
+        if isinstance(left, SelectionShortest):
+            return SelectionShortest(left.options + self.options)
+        else:
+            return SelectionShortest([left] + self.options)
+
+class SelectionLongest:
+    def __init__(self, option1: "GrammarRule|SelectionLongest", *otheroptions: "GrammarRule|SelectionLongest") -> None:
+        self.options = (option1.options if isinstance(option1, SelectionLongest) else [option1]) + [
+            opt 
+            for options in [
+                opt.options if isinstance(opt, SelectionLongest) else [opt] for opt in otheroptions
+            ]
+            for opt in options 
+        ]
+
+    def __xor__(self, right: "GrammarRule"):
+        if isinstance(right, SelectionLongest):
+            return SelectionLongest(self.options + right.options)
+        else:
+            return SelectionLongest(self.options + [right])
+
+    def __rxor__(self, left: "GrammarRule"):
+        if isinstance(left, SelectionLongest):
+            return SelectionLongest(left.options + self.options)
+        else:
+            return SelectionLongest([left] + self.options)
 
 
 class GrammarClass(type[SyntaxObject]):
@@ -69,17 +113,41 @@ class GrammarClass(type[SyntaxObject]):
             )
         grammar: "GrammarRule"
 
-    def __or__(cls, right: "GrammarRule"):
+    def __div__(cls, right: "GrammarRule"):
         if isinstance(right, SelectionFirst):
             return SelectionFirst([cls] + right.options)
         else:
             return SelectionFirst([cls, right])
 
-    def __ror__(cls, left: "GrammarRule"):
+    def __rdiv__(cls, left: "GrammarRule"):
         if isinstance(left, SelectionFirst):
             return SelectionFirst(left.options + [cls])
         else:
             return SelectionFirst([left, cls])
+
+    def __or__(cls, right: "GrammarRule"):
+        if isinstance(right, SelectionShortest):
+            return SelectionShortest([cls] + right.options)
+        else:
+            return SelectionShortest([cls, right])
+
+    def __ror__(cls, left: "GrammarRule"):
+        if isinstance(left, SelectionShortest):
+            return SelectionShortest(left.options + [cls])
+        else:
+            return SelectionShortest([left, cls])
+
+    def __xor__(cls, right: "GrammarRule"):
+        if isinstance(right, SelectionLongest):
+            return SelectionLongest([cls] + right.options)
+        else:
+            return SelectionLongest([cls, right])
+
+    def __rxor__(cls, left: "GrammarRule"):
+        if isinstance(left, SelectionLongest):
+            return SelectionLongest(left.options + [cls])
+        else:
+            return SelectionLongest([left, cls])
 
 
 AttributeClass = Union[
@@ -92,6 +160,8 @@ GrammarRule = Union[
     PatternT,
     tuple["GrammarRule"],  # For concatenation
     SelectionFirst,  # For multiple options (Union of grammars)
+    SelectionShortest,  # For multiple options (Union of grammars)
+    SelectionLongest,  # For multiple options (Union of grammars)
     Opt,  # ? operator
     list["GrammarRule"],  # Also ? operator
     OneOrMore,  # + operator

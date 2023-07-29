@@ -15,10 +15,10 @@ class Id(SyntaxObject, metaclass = GrammarClass):
     grammar = re.compile("[a-zA-Z_][0-9a-zA-Z_]*")
 
 class Operation(SyntaxObject, metaclass = GrammarClass):
-    grammar = atr('left')(Id|Num), WS, Selection('+', '-'), WS, atr('right')(Id|Num)
+    grammar = atr('left')(Id/Num), WS, SelectionFirst('+', '-'), WS, atr('right')(Id/Num)
 
 class Assignment(SyntaxObject, metaclass = GrammarClass):
-    grammar = atr('left')(Id), WS, '=', WS, atr('expression')(Id|Num|Operation)
+    grammar = atr('left')(Id), WS, '=', WS, atr('expression')(Id/Num/Operation)
 
 class Program(SyntaxObject, metaclass = GrammarClass):
     grammar =  ZeroOrMore((Attr('stat', Assignment), NL))
