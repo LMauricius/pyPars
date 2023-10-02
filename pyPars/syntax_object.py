@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 class SyntaxObject:
     grammarAttributeNames: set[str] = field(default_factory=set) 
     span: tuple[int, int] = (0,0)
+    options: list["SyntaxObject"] = []
 
     def extend(self, source: "SyntaxObject")->None:
         '''
@@ -18,6 +19,28 @@ class SyntaxObject:
                 self.grammarAttributeNames.add(grammarAttrName)
                 setattr(self, grammarAttrName, grammarAttr)
             grammarAttr.extend(newGrammarAttr)
+
+        if len(source.options) > 0:
+            self.extendOptions(source.options)
+
+    def extendOptions(self, sources: "list[SyntaxObject]")->None:
+        '''
+        Each entry is treated as an option in an ambiguity
+        '''
+        if len(sources) == 1:
+            self.extend(sources[0])
+        elif len(self.options) == 0:
+            self.options = sources
+        else:
+            newoptions = []
+            for option in self.options:
+                for source in sources:
+                    newopt = SyntaxObject(set())
+                    newopt.extend(option)
+                    newopt.extend(source)
+                    newoptions.append(newopt)
+            self.options = newoptions
+
 
     def __dict__(self) -> dict[str, 'any']:
         return {
