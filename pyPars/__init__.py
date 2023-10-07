@@ -17,6 +17,7 @@ from .rules import (
     GrammarRule,
 )
 from dataclasses import dataclass
+import forward_decl as fw
 
 @dataclass
 class LeftRecursiveIterationContext:
@@ -43,6 +44,8 @@ def parseLeftRecursive(
     """
     if rule is None:
         return pos
+    elif isinstance(rule, fw.OpaqueFwRef):
+        return parseLeftRecursive(mytext, pos, rule.get_ref(), ruleId2recursionContext, attrStore)
     elif isinstance(rule, NatT):
         if mytext.startswith(rule, pos):
             return pos + len(rule)

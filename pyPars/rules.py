@@ -3,6 +3,8 @@ from typing import Union, Callable
 from .text import Text, NatT, PosT, PatternT, MatchT
 from .syntax_object import SyntaxObject
 
+import forward_decl as fw
+
 
 @dataclass
 class Opt:
@@ -19,12 +21,17 @@ class ZeroOrMore:
     rule: "GrammarRule"
 
 
-@dataclass
 class Attr:
-    name: str
-    attrClasses: "GrammarClass|SelectionFirst"
+    def __init__(self, name: str, attrClasses: "GrammarClass|SelectionFirst|str") -> None:
+        self.name = name
+        if isinstance(attrClasses, str):
+            self.attrClasses = SelectionFirst(*[
+                fw.OpaqueFwRef(id) for id in attrClasses.split('/')
+            ])
+        else:
+            self.attrClasses = attrClasses
 
-def atr(name: str) -> Callable[["GrammarClass|SelectionFirst"], Attr]:
+def atr(name: str) -> Callable[["GrammarClass|SelectionFirst|str"], Attr]:
     return lambda attrClasses: Attr(name, attrClasses)
 
 
@@ -168,4 +175,5 @@ GrammarRule = Union[
     ZeroOrMore,  # * operator
     Attr,  # For named attributes
     GrammarClass,  # Class containing a 'grammar' class variable
+    fw.OpaqueFwRef, # A forward reference to a rule
 ]
