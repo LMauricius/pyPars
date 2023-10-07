@@ -45,13 +45,13 @@ class SelectionFirst:
             for opt in options 
         ]
 
-    def __div__(self, right: "GrammarRule"):
+    def __truediv__(self, right: "GrammarRule"):
         if isinstance(right, SelectionFirst):
             return SelectionFirst(self.options + right.options)
         else:
             return SelectionFirst(self.options + [right])
 
-    def __rdiv__(self, left: "GrammarRule"):
+    def __rtruediv__(self, left: "GrammarRule"):
         if isinstance(left, SelectionFirst):
             return SelectionFirst(left.options + self.options)
         else:
@@ -120,13 +120,13 @@ class GrammarClass(type[SyntaxObject]):
             )
         grammar: "GrammarRule"
 
-    def __div__(cls, right: "GrammarRule"):
+    def __truediv__(cls, right: "GrammarRule"):
         if isinstance(right, SelectionFirst):
             return SelectionFirst([cls] + right.options)
         else:
             return SelectionFirst([cls, right])
 
-    def __rdiv__(cls, left: "GrammarRule"):
+    def __rtruediv__(cls, left: "GrammarRule"):
         if isinstance(left, SelectionFirst):
             return SelectionFirst(left.options + [cls])
         else:

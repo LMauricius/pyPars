@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 class SyntaxObject:
     grammarAttributeNames: set[str] = field(default_factory=set) 
     span: tuple[int, int] = (0,0)
-    options: list["SyntaxObject"] = []
+    options: list["SyntaxObject"] = field(default_factory=list)
 
     def extend(self, source: "SyntaxObject")->None:
         '''
