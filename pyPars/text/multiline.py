@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from . import Text
+from ._abstract import Text
 
 @dataclass
 class MultilinePos:

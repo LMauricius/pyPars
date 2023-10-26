@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Union, Callable
 from .text import Text, NatT, PosT, PatternT, MatchT
-from .syntax_object import SyntaxObject
+from ._syntax_object import SyntaxObject
 
 import forward_decl as fw
 
@@ -28,8 +28,18 @@ class Attr:
             self.attrClasses = SelectionFirst(*[
                 fw.OpaqueFwRef(id) for id in attrClasses.split('/')
             ])
-        else:
+        elif isinstance(attrClasses, SelectionFirst):
             self.attrClasses = attrClasses
+        else:
+            self.attrClasses = SelectionFirst(attrClasses)
+
+    def __repr__(self) -> str:
+        classNames = self.attrClasses.__name__ if isinstance(self.attrClasses, GrammarClass) else \
+            '/'.join([
+                repr(attrClass)
+                for attrClass in self.attrClasses.options
+            ])
+        return f"Attr('{self.name}', {classNames})"
 
 def atr(name: str) -> Callable[["GrammarClass|SelectionFirst|str"], Attr]:
     return lambda attrClasses: Attr(name, attrClasses)
@@ -47,15 +57,21 @@ class SelectionFirst:
 
     def __truediv__(self, right: "GrammarRule"):
         if isinstance(right, SelectionFirst):
-            return SelectionFirst(self.options + right.options)
+            return SelectionFirst(*(self.options + right.options))
         else:
-            return SelectionFirst(self.options + [right])
+            return SelectionFirst(*(self.options + [right]))
 
     def __rtruediv__(self, left: "GrammarRule"):
         if isinstance(left, SelectionFirst):
-            return SelectionFirst(left.options + self.options)
+            return SelectionFirst(*(left.options + self.options))
         else:
-            return SelectionFirst([left] + self.options)
+            return SelectionFirst(*([left] + self.options))
+
+    def __repr__(self) -> str:
+        return '/'.join([
+                repr(opt)
+                for opt in self.options
+            ])
 
 class SelectionShortest:
     def __init__(self, option1: "GrammarRule|SelectionShortest", *otheroptions: "GrammarRule|SelectionShortest") -> None:
@@ -69,15 +85,21 @@ class SelectionShortest:
 
     def __or__(self, right: "GrammarRule"):
         if isinstance(right, SelectionShortest):
-            return SelectionShortest(self.options + right.options)
+            return SelectionShortest(*(self.options + right.options))
         else:
-            return SelectionShortest(self.options + [right])
+            return SelectionShortest(*(self.options + [right]))
 
     def __ror__(self, left: "GrammarRule"):
         if isinstance(left, SelectionShortest):
-            return SelectionShortest(left.options + self.options)
+            return SelectionShortest(*(left.options + self.options))
         else:
-            return SelectionShortest([left] + self.options)
+            return SelectionShortest(*([left] + self.options))
+
+    def __repr__(self) -> str:
+        return '|'.join([
+                repr(opt)
+                for opt in self.options
+            ])
 
 class SelectionLongest:
     def __init__(self, option1: "GrammarRule|SelectionLongest", *otheroptions: "GrammarRule|SelectionLongest") -> None:
@@ -89,17 +111,23 @@ class SelectionLongest:
             for opt in options 
         ]
 
-    def __xor__(self, right: "GrammarRule"):
+    def __floordiv__(self, right: "GrammarRule"):
         if isinstance(right, SelectionLongest):
-            return SelectionLongest(self.options + right.options)
+            return SelectionLongest(*(self.options + right.options))
         else:
-            return SelectionLongest(self.options + [right])
+            return SelectionLongest(*(self.options + [right]))
 
-    def __rxor__(self, left: "GrammarRule"):
+    def __rfloordiv__(self, left: "GrammarRule"):
         if isinstance(left, SelectionLongest):
-            return SelectionLongest(left.options + self.options)
+            return SelectionLongest(*(left.options + self.options))
         else:
-            return SelectionLongest([left] + self.options)
+            return SelectionLongest(*([left] + self.options))
+
+    def __repr__(self) -> str:
+        return '//'.join([
+                repr(opt)
+                for opt in self.options
+            ])
 
 
 class GrammarClass(type[SyntaxObject]):
@@ -122,39 +150,42 @@ class GrammarClass(type[SyntaxObject]):
 
     def __truediv__(cls, right: "GrammarRule"):
         if isinstance(right, SelectionFirst):
-            return SelectionFirst([cls] + right.options)
+            return SelectionFirst(*([cls] + right.options))
         else:
-            return SelectionFirst([cls, right])
+            return SelectionFirst(*[cls, right])
 
     def __rtruediv__(cls, left: "GrammarRule"):
         if isinstance(left, SelectionFirst):
-            return SelectionFirst(left.options + [cls])
+            return SelectionFirst(*(left.options + [cls]))
         else:
-            return SelectionFirst([left, cls])
+            return SelectionFirst(*[left, cls])
 
     def __or__(cls, right: "GrammarRule"):
         if isinstance(right, SelectionShortest):
-            return SelectionShortest([cls] + right.options)
+            return SelectionShortest(*([cls] + right.options))
         else:
-            return SelectionShortest([cls, right])
+            return SelectionShortest(*[cls, right])
 
     def __ror__(cls, left: "GrammarRule"):
         if isinstance(left, SelectionShortest):
-            return SelectionShortest(left.options + [cls])
+            return SelectionShortest(*(left.options + [cls]))
         else:
-            return SelectionShortest([left, cls])
+            return SelectionShortest(*[left, cls])
 
-    def __xor__(cls, right: "GrammarRule"):
+    def __floordiv__(cls, right: "GrammarRule"):
         if isinstance(right, SelectionLongest):
-            return SelectionLongest([cls] + right.options)
+            return SelectionLongest(*([cls] + right.options))
         else:
-            return SelectionLongest([cls, right])
+            return SelectionLongest(*[cls, right])
 
-    def __rxor__(cls, left: "GrammarRule"):
+    def __rfloordiv__(cls, left: "GrammarRule"):
         if isinstance(left, SelectionLongest):
-            return SelectionLongest(left.options + [cls])
+            return SelectionLongest(*(left.options + [cls]))
         else:
-            return SelectionLongest([left, cls])
+            return SelectionLongest(*[left, cls])
+
+    def __repr__(self) -> str:
+        return self.__name__
 
 
 AttributeClass = Union[
