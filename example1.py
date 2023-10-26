@@ -14,30 +14,33 @@ class Num(SyntaxObject, metaclass = GrammarClass):
 class Id(SyntaxObject, metaclass = GrammarClass):
     grammar = re.compile("[a-zA-Z_][0-9a-zA-Z_]*")
 
-class Operation(SyntaxObject, metaclass = GrammarClass):
-    grammar = atr('left')(Id/Num), WS, SelectionFirst('+', '-'), WS, atr('right')(Id/Num)
+Expression = fw.FwDecl()
+class Expression(SyntaxObject, metaclass = GrammarClass):
+    grammar \
+        = Id \
+        / Num \
+        / (atr('left')("Expression"), WS, SelectionFirst('+', '-'), WS, atr('right')("Expression"))
 
 class Assignment(SyntaxObject, metaclass = GrammarClass):
-    grammar = atr('left')(Id), WS, '=', WS, atr('expression')(Id/Num/Operation)
+    grammar = atr('assignee')(Id), WS, '=', WS, atr('value')(Expression)
 
 class Program(SyntaxObject, metaclass = GrammarClass):
-    grammar =  ZeroOrMore((Attr('stat', Assignment), NL))
+    grammar =  ZeroOrMore(Attr('stat', Assignment)/NL)
 
 
 progInput = '''
 a = 1
 b = 2
-
 c = a + b
 
 
-d = c
+d = c + a + b
 
 
 
 '''
 
 prog = Program()
-pos = parse(StringText(progInput), 0, Program.grammar, prog)
-prog.span = (prog.span[0], pos)
+pos = parse(StringText(progInput), 0, Program, prog)
+prog.so_span = (prog.so_span[0], pos)
 print(json.dumps(prog.__dict__(), indent=4))
