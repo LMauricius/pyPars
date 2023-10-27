@@ -46,11 +46,11 @@ def atr(name: str) -> Callable[["GrammarClass|SelectionFirst|str"], Attr]:
 
 
 class SelectionFirst:
-    def __init__(self, option1: "GrammarRule|SelectionFirst", *otheroptions: "GrammarRule|SelectionFirst") -> None:
-        self.options = (option1.options if isinstance(option1, SelectionFirst) else [option1]) + [
+    def __init__(self, *options: "GrammarRule|SelectionFirst") -> None:
+        self.options = [
             opt 
             for options in [
-                opt.options if isinstance(opt, SelectionFirst) else [opt] for opt in otheroptions
+                opt.options if isinstance(opt, SelectionFirst) else [opt] for opt in options
             ]
             for opt in options 
         ]
