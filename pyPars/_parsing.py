@@ -12,6 +12,7 @@ from ._rules import (
     GrammarClass,
     GrammarRule,
 )
+from . import so_modifiers as mod
 from dataclasses import dataclass
 import forward_decl as fw
 
@@ -113,6 +114,7 @@ def parseLeftRecursive(
             # first check non-left-recursive options
             for ruleoption in rule.options:
                 tempAttrStore = SyntaxObject(set())
+                newpos = None
                 try:
                     newpos = parseLeftRecursive(mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore)
                 except LeftRecursionException as e:
@@ -250,23 +252,35 @@ def parseLeftRecursive(
             if isinstance(attrClass, fw.OpaqueFwRef):
                 attrClass = attrClass.get_ref()
 
-            subAttrStore: SyntaxObject = attrClass()
-            subAttrStore.so_span = (pos, -1)
+            newSyntaxObject: SyntaxObject = attrClass()
+            newSyntaxObjectSpan = (pos, -1)
 
             newpos = parseLeftRecursive(
-                mytext, pos, attrClass.grammar, ruleId2recursionContext, subAttrStore
+                mytext, pos, attrClass.grammar, ruleId2recursionContext, newSyntaxObject
             )
 
             if newpos is not None:
-                subAttrStore.so_span = (subAttrStore.so_span[0], newpos)
+                newSyntaxObjectSpan = (newSyntaxObjectSpan[0], newpos)
+
+                # Satisfy the TextSaver modifier
+                if isinstance(newSyntaxObject, mod.TextSaver):
+                    newSyntaxObject.so_savedText = mytext[
+                        newSyntaxObjectSpan[0] : newSyntaxObjectSpan[1]
+                    ]
+                # Satisfy the SpanSaver modifier
+                if isinstance(newSyntaxObject, mod.SpanSaver):
+                    newSyntaxObject.so_span = newSyntaxObjectSpan
+                # Satisfy the SelfReplacable modifier
+                while isinstance(newSyntaxObject, mod.SelfReplacable) and 'self' in attrStore.so_grammarAttributeNames:
+                    newSyntaxObject = newSyntaxObject.self
 
                 if rule.name in attrStore.so_grammarAttributeNames:
-                    grammarAttr: list = getattr(attrStore, rule.name)
+                    grammarAttrOptions: list = getattr(attrStore, rule.name)
                 else:
-                    grammarAttr = []
+                    grammarAttrOptions = []
                     attrStore.so_grammarAttributeNames.add(rule.name)
-                    setattr(attrStore, rule.name, grammarAttr)
-                grammarAttr.append(subAttrStore)
+                    setattr(attrStore, rule.name, grammarAttrOptions)
+                grammarAttrOptions.append(newSyntaxObject)
 
                 return newpos
         return None
