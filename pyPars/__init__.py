@@ -12,3 +12,5 @@ from ._rules import (
     GrammarClass,
     GrammarRule,
 )
+
+from ._rule_symbols import K

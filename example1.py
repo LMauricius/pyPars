@@ -29,7 +29,7 @@ class Assignment(SyntaxObject, metaclass = GrammarClass):
     grammar = atr('assignee')(Id), WS, '=', WS, atr('value')(Expression)
 
 class Program(SyntaxObject, metaclass = GrammarClass):
-    grammar =  ZeroOrMore(Attr('stat', Assignment)/NL)
+    grammar =  (Attr('stat', Assignment)/NL)*K
 
 
 progInput = '''
