@@ -46,4 +46,4 @@ d = c + a + b
 
 prog = Program()
 pos = parse(StringText(progInput), 0, Program, prog)
-print(json.dumps(prog.__dict__(), indent=4))
+print(json.dumps(prog.__dict__(), indent=4, default=lambda o: o.__dict__()))

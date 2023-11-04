@@ -21,7 +21,7 @@ class SyntaxObject(ModularDictMethodObject):
                 {"<class>": self.__class__.__name__}
                 | {
                     grammarAttrName: [
-                        subobj.__dict__() for subobj in getattr(self, grammarAttrName)
+                        subobj for subobj in getattr(self, grammarAttrName)
                     ]
                     for grammarAttrName in self.so_grammarAttributeNames
                 }

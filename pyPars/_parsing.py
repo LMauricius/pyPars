@@ -20,6 +20,7 @@ import forward_decl as fw
 @dataclass
 class LeftRecursiveIterationContext:
     position: PosT
+    attrStore: SyntaxObject | None
 
 
 class LeftRecursionException(Exception):
@@ -80,7 +81,9 @@ def parseLeftRecursive(
 
         for ruleoption in rule.options:
             tempAttrStore = SyntaxObject(set())
-            newpos = parseLeftRecursive(mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore)
+            newpos = parseLeftRecursive(
+                mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+            )
             if newpos is not None and (minpos is None or newpos <= minpos):
                 if minpos is None or newpos < minpos:
                     minpos = newpos
@@ -98,6 +101,8 @@ def parseLeftRecursive(
             if ruleId2recursionContext[id(rule)] is None:
                 raise LeftRecursionException(rule)
             else:
+                if attrStore is not None:
+                    attrStore.extend(ruleId2recursionContext[id(rule)].attrStore)
                 return ruleId2recursionContext[id(rule)].position
         else:
             # Prepare for possible recursion later
@@ -116,7 +121,9 @@ def parseLeftRecursive(
                 tempAttrStore = SyntaxObject(set())
                 newpos = None
                 try:
-                    newpos = parseLeftRecursive(mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore)
+                    newpos = parseLeftRecursive(
+                        mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+                    )
                 except LeftRecursionException as e:
                     if e.grammar_cls is rule:
                         higherPriorityRecursions.append(ruleoption)
@@ -126,36 +133,37 @@ def parseLeftRecursive(
 
                 if newpos is not None:
                     ruleId2recursionContext[id(rule)] = LeftRecursiveIterationContext(
-                        newpos
+                        newpos, tempAttrStore
                     )
-                    if attrStore is not None:
-                        attrStore.extend(tempAttrStore)
                     break
 
             if newpos is None:
                 return None
 
             # now keep checking while we can extend current node by deepening the recursion
+            oldpos = newpos
             while tryRecursions:
                 tryRecursions = False
                 indexReached = 0
                 for indexReached, ruleoption in enumerate(higherPriorityRecursions):
                     tempAttrStore = SyntaxObject(set())
-                    oldpos = newpos
-                    newpos = parseLeftRecursive(mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore)
+                    newpos = parseLeftRecursive(
+                        mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+                    )
 
                     if newpos is not None and newpos > oldpos:
                         tryRecursions = True
                         ruleId2recursionContext[
                             id(rule)
-                        ] = LeftRecursiveIterationContext(newpos)
-                        if attrStore is not None:
-                            attrStore.extend(tempAttrStore)
+                        ] = LeftRecursiveIterationContext(newpos, tempAttrStore)
+                        oldpos = newpos
                         break
                 higherPriorityRecursions = higherPriorityRecursions[
                     0 : indexReached + 1
                 ]
 
+            if attrStore is not None:
+                attrStore.extend(ruleId2recursionContext[id(rule)].attrStore)
             return ruleId2recursionContext[id(rule)].position
         elif isinstance(rule, SelectionLongest):
             maxpos = None
@@ -163,7 +171,9 @@ def parseLeftRecursive(
 
             for ruleoption in rule.options:
                 tempAttrStore = SyntaxObject(set())
-                newpos = parseLeftRecursive(mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore)
+                newpos = parseLeftRecursive(
+                    mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+                )
                 if newpos is not None and (maxpos is None or newpos >= maxpos):
                     if maxpos is None or newpos > maxpos:
                         maxpos = newpos
@@ -271,8 +281,18 @@ def parseLeftRecursive(
                 if isinstance(newSyntaxObject, mod.SpanSaver):
                     newSyntaxObject.so_span = newSyntaxObjectSpan
                 # Satisfy the SelfReplacable modifier
-                while isinstance(newSyntaxObject, mod.SelfReplacable) and 'self' in attrStore.so_grammarAttributeNames:
-                    newSyntaxObject = newSyntaxObject.self
+                trySelfReplace = True
+                newSyntaxObjectOptions = [newSyntaxObject]
+                while trySelfReplace:
+                    trySelfReplace = False
+                    nextSyntaxObjectOptions = []
+                    for opt in newSyntaxObjectOptions:
+                        if isinstance(opt, mod.SelfReplacable) and "self" in opt.so_grammarAttributeNames:
+                            trySelfReplace = True
+                            nextSyntaxObjectOptions.extend(opt.self)
+                        else:
+                            nextSyntaxObjectOptions.append(opt)
+                    newSyntaxObjectOptions = nextSyntaxObjectOptions
 
                 if rule.name in attrStore.so_grammarAttributeNames:
                     grammarAttrOptions: list = getattr(attrStore, rule.name)
@@ -280,7 +300,7 @@ def parseLeftRecursive(
                     grammarAttrOptions = []
                     attrStore.so_grammarAttributeNames.add(rule.name)
                     setattr(attrStore, rule.name, grammarAttrOptions)
-                grammarAttrOptions.append(newSyntaxObject)
+                grammarAttrOptions.extend(newSyntaxObjectOptions)
 
                 return newpos
         return None
