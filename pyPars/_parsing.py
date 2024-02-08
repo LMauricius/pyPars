@@ -1,17 +1,19 @@
 from .text import Text, NatT, PosT, PatternT, MatchT
 from ._syntax_object import SyntaxObject
 from ._rules import (
+    Concat,
     Opt,
     OneOrMore,
     ZeroOrMore,
     Attr,
-    atr,
     SelectionFirst,
-    SelectionShortest,
+    Selection,
     SelectionLongest,
     GrammarClass,
     GrammarRule,
+    CanonGrammarRule,
 )
+from ._rule_canonize import tryCanonize
 from . import so_modifiers as mod
 from dataclasses import dataclass
 import forward_decl as fw
@@ -29,86 +31,98 @@ class LeftRecursionException(Exception):
         self.grammar_cls = grammar_cls
 
 
+@dataclass
+class ParseState:
+    position: PosT
+    currentObject: SyntaxObject
+
+
 def parseLeftRecursive(
     mytext: Text[NatT, PosT, PatternT, MatchT],
-    pos: PosT,
-    rule: GrammarRule,
+    startPos: PosT,
+    currentRule: GrammarRule,
     ruleId2recursionContext: dict[int, LeftRecursiveIterationContext],
-    attrStore: SyntaxObject | None = None,
-) -> PosT | None:
+) -> list[ParseState]:
+    """
+    Returns the end position of the successful match or None if it failed
+    """
     PosT = mytext.GetPositionType()
     NatT = mytext.GetNativeType()
     PatternT = mytext.GetPatternType()
     MatchT = mytext.GetMatchType()
 
-    print(f"Entered {repr(rule)}")
+    currentObject = SyntaxObject()
 
-    """
-    Returns the end position of the successful match or None if it failed
-    """
-    if rule is None:
-        return pos
-    elif isinstance(rule, fw.OpaqueFwRef):
-        return parseLeftRecursive(
-            mytext, pos, rule.get_ref(), ruleId2recursionContext, attrStore
-        )
-    elif isinstance(rule, NatT):
-        if mytext.startswith(rule, pos):
-            return pos + len(rule)
+    currentRule = tryCanonize(currentRule)
+
+    if isinstance(currentRule, NatT):
+        if mytext.startswith(currentRule, startPos):
+            return [ParseState(startPos + len(currentRule), currentObject)]
         else:
-            return None
-    elif isinstance(rule, PatternT):
-        m = mytext.matchedby(rule, pos)
+            return []
+    elif isinstance(currentRule, PatternT):
+        m = mytext.matchedby(currentRule, startPos)
         if m is None:
-            return None
+            return []
         else:
-            return m.span[1]
-    elif isinstance(rule, tuple):
-        if len(rule) > 1:
-            pos = parseLeftRecursive(
-                mytext, pos, rule[0], ruleId2recursionContext, attrStore
+            return [(m.span[1], currentObject)]
+    elif isinstance(currentRule, Concat):
+        if len(currentRule) >= 1:
+            newPos, newObject = parseLeftRecursive(
+                mytext, startPos, currentRule[0], ruleId2recursionContext
             )
-            if pos is None:
+            if newPos is not None:
+                currentObject.extend(newObject)
+            else:
                 return None
-        for rulepart in rule[1:]:
-            pos = parseLeftRecursive(mytext, pos, rulepart, {}, attrStore)
-            if pos is None:
-                return None
-        return pos
-    elif isinstance(rule, SelectionShortest):
-        minpos = None
-        multiAttrStores: list[SyntaxObject] = []
+            for rulepart in currentRule[1:]:
+                newPos = parseLeftRecursive(mytext, newPos, rulepart, {}, currentObject)
+                if newPos is not None:
+                    currentObject.extend(newObject)
+                else:
+                    return None
+            return [(newPos, currentObject)]
+        else:
+            return [(startPos, currentObject)]
+    elif isinstance(currentRule, Selection):
+        minPos = None
+        validOptions: list[SyntaxObject] = []
 
-        for ruleoption in rule.options:
-            tempAttrStore = SyntaxObject(set())
-            newpos = parseLeftRecursive(
-                mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+        for option in currentRule.options:
+            tempObject = SyntaxObject(set())
+            newPos = parseLeftRecursive(
+                mytext, startPos, option, ruleId2recursionContext, tempObject
             )
-            if newpos is not None and (minpos is None or newpos <= minpos):
-                if minpos is None or newpos < minpos:
-                    minpos = newpos
-                    multiAttrStores = []
-                multiAttrStores.append(tempAttrStore)
+            if newPos is not None:
+                if minPos is None or newPos < minPos:
+                    minPos = newPos
+                    multiAttrStores = [tempObject]
+                elif newPos == minPos:
+                    multiAttrStores.append(tempObject)
 
-        if attrStore is not None and len(multiAttrStores) > 0:
-            attrStore.extendOptions(multiAttrStores)
-        return minpos
-    elif isinstance(rule, SelectionFirst) or isinstance(rule, SelectionLongest):
+        if len(validOptions) > 0:
+            currentObject.extendOptions(validOptions)
+            return minPos
+    elif isinstance(currentRule, SelectionFirst) or isinstance(
+        currentRule, SelectionLongest
+    ):
         # ensure we first check if non-left-recursive options can be accepted
 
         # check if we already visited this rule at this position in text
-        if id(rule) in ruleId2recursionContext:
-            if ruleId2recursionContext[id(rule)] is None:
-                raise LeftRecursionException(rule)
+        if id(currentRule) in ruleId2recursionContext:
+            if ruleId2recursionContext[id(currentRule)] is None:
+                raise LeftRecursionException(currentRule)
             else:
-                if attrStore is not None:
-                    attrStore.extend(ruleId2recursionContext[id(rule)].attrStore)
-                return ruleId2recursionContext[id(rule)].position
+                if currentObject is not None:
+                    currentObject.extend(
+                        ruleId2recursionContext[id(currentRule)].attrStore
+                    )
+                return ruleId2recursionContext[id(currentRule)].position
         else:
             # Prepare for possible recursion later
-            ruleId2recursionContext[id(rule)] = None
+            ruleId2recursionContext[id(currentRule)] = None
 
-        if isinstance(rule, SelectionFirst):
+        if isinstance(currentRule, SelectionFirst):
             # holds rules that have higher priority than the currently accepted one,
             # but could not be accepted yet as they might rely on lower priority selections
             # to be accepted further down the recursion
@@ -117,142 +131,154 @@ def parseLeftRecursive(
             tryRecursions = False
 
             # first check non-left-recursive options
-            for ruleoption in rule.options:
-                tempAttrStore = SyntaxObject(set())
-                newpos = None
+            for ruleoption in currentRule.options:
+                tempObject = SyntaxObject(set())
+                newPos = None
                 try:
-                    newpos = parseLeftRecursive(
-                        mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+                    newPos = parseLeftRecursive(
+                        mytext,
+                        startPos,
+                        ruleoption,
+                        ruleId2recursionContext,
+                        tempObject,
                     )
                 except LeftRecursionException as e:
-                    if e.grammar_cls is rule:
+                    if e.grammar_cls is currentRule:
                         higherPriorityRecursions.append(ruleoption)
                         tryRecursions = True
                     else:
                         raise
 
-                if newpos is not None:
-                    ruleId2recursionContext[id(rule)] = LeftRecursiveIterationContext(
-                        newpos, tempAttrStore
-                    )
+                if newPos is not None:
+                    ruleId2recursionContext[
+                        id(currentRule)
+                    ] = LeftRecursiveIterationContext(newPos, tempObject)
                     break
 
-            if newpos is None:
+            if newPos is None:
                 return None
 
             # now keep checking while we can extend current node by deepening the recursion
-            oldpos = newpos
+            oldpos = newPos
             while tryRecursions:
                 tryRecursions = False
                 indexReached = 0
                 for indexReached, ruleoption in enumerate(higherPriorityRecursions):
-                    tempAttrStore = SyntaxObject(set())
-                    newpos = parseLeftRecursive(
-                        mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+                    tempObject = SyntaxObject(set())
+                    newPos = parseLeftRecursive(
+                        mytext,
+                        startPos,
+                        ruleoption,
+                        ruleId2recursionContext,
+                        tempObject,
                     )
 
-                    if newpos is not None and newpos > oldpos:
+                    if newPos is not None and newPos > oldpos:
                         tryRecursions = True
                         ruleId2recursionContext[
-                            id(rule)
-                        ] = LeftRecursiveIterationContext(newpos, tempAttrStore)
-                        oldpos = newpos
+                            id(currentRule)
+                        ] = LeftRecursiveIterationContext(newPos, tempObject)
+                        oldpos = newPos
                         break
                 higherPriorityRecursions = higherPriorityRecursions[
                     0 : indexReached + 1
                 ]
 
-            if attrStore is not None:
-                attrStore.extend(ruleId2recursionContext[id(rule)].attrStore)
-            return ruleId2recursionContext[id(rule)].position
-        elif isinstance(rule, SelectionLongest):
+            if currentObject is not None:
+                currentObject.extend(ruleId2recursionContext[id(currentRule)].attrStore)
+            return ruleId2recursionContext[id(currentRule)].position
+        elif isinstance(currentRule, SelectionLongest):
             maxpos = None
             multiAttrStores: list[SyntaxObject] = []
 
-            for ruleoption in rule.options:
-                tempAttrStore = SyntaxObject(set())
-                newpos = parseLeftRecursive(
-                    mytext, pos, ruleoption, ruleId2recursionContext, tempAttrStore
+            for ruleoption in currentRule.options:
+                tempObject = SyntaxObject(set())
+                newPos = parseLeftRecursive(
+                    mytext, startPos, ruleoption, ruleId2recursionContext, tempObject
                 )
-                if newpos is not None and (maxpos is None or newpos >= maxpos):
-                    if maxpos is None or newpos > maxpos:
-                        maxpos = newpos
+                if newPos is not None and (maxpos is None or newPos >= maxpos):
+                    if maxpos is None or newPos > maxpos:
+                        maxpos = newPos
                         multiAttrStores = []
-                    multiAttrStores.append(tempAttrStore)
+                    multiAttrStores.append(tempObject)
 
-            if attrStore is not None and len(multiAttrStores) > 0:
-                attrStore.extendOptions(multiAttrStores)
+            if currentObject is not None and len(multiAttrStores) > 0:
+                currentObject.extendOptions(multiAttrStores)
             return maxpos
-    elif isinstance(rule, Opt) or isinstance(rule, list):
-        if isinstance(rule, Opt):
-            nonOptRule = rule.rule
+    elif isinstance(currentRule, Opt) or isinstance(currentRule, list):
+        if isinstance(currentRule, Opt):
+            nonOptRule = currentRule.rule
         else:
-            nonOptRule = tuple(rule)
-        tempAttrStore = SyntaxObject(set())
-        newpos = parseLeftRecursive(
-            mytext, pos, nonOptRule, ruleId2recursionContext, tempAttrStore
+            nonOptRule = tuple(currentRule)
+        tempObject = SyntaxObject(set())
+        newPos = parseLeftRecursive(
+            mytext, startPos, nonOptRule, ruleId2recursionContext, tempObject
         )
 
-        if newpos is not None:
-            if attrStore is not None:
-                attrStore.extend(tempAttrStore)
-            return newpos
+        if newPos is not None:
+            if currentObject is not None:
+                currentObject.extend(tempObject)
+            return newPos
         else:
-            return pos
-    elif isinstance(rule, OneOrMore):
-        tempAttrStore = SyntaxObject(set())
-        newpos = parseLeftRecursive(
-            mytext, pos, rule.rule, ruleId2recursionContext, tempAttrStore
+            return startPos
+    elif isinstance(currentRule, OneOrMore):
+        tempObject = SyntaxObject(set())
+        newPos = parseLeftRecursive(
+            mytext, startPos, currentRule.rule, ruleId2recursionContext, tempObject
         )
 
         # first must match
-        if newpos is None:
+        if newPos is None:
             return None
 
         # others are optional
-        while newpos is not None:
+        while newPos is not None:
             # store previous attributes
-            if attrStore is not None:
-                attrStore.extend(tempAttrStore)
-            pos = newpos
+            if currentObject is not None:
+                currentObject.extend(tempObject)
+            startPos = newPos
 
             # try new rule instance
-            tempAttrStore = SyntaxObject(set())
-            newpos = parseLeftRecursive(mytext, pos, rule.rule, set(), tempAttrStore)
+            tempObject = SyntaxObject(set())
+            newPos = parseLeftRecursive(
+                mytext, startPos, currentRule.rule, set(), tempObject
+            )
 
-        return pos
-    elif isinstance(rule, ZeroOrMore):
-        tempAttrStore = SyntaxObject(set())
-        newpos = parseLeftRecursive(
-            mytext, pos, rule.rule, ruleId2recursionContext, tempAttrStore
+        return startPos
+    elif isinstance(currentRule, ZeroOrMore):
+        tempObject = SyntaxObject(set())
+        newPos = parseLeftRecursive(
+            mytext, startPos, currentRule.rule, ruleId2recursionContext, tempObject
         )
 
-        while newpos is not None:
+        while newPos is not None:
             # store previous attributes
-            if attrStore is not None:
-                attrStore.extend(tempAttrStore)
-            pos = newpos
+            if currentObject is not None:
+                currentObject.extend(tempObject)
+            startPos = newPos
 
             # try new rule instance
-            tempAttrStore = SyntaxObject(set())
-            newpos = parseLeftRecursive(mytext, pos, rule.rule, {}, tempAttrStore)
+            tempObject = SyntaxObject(set())
+            newPos = parseLeftRecursive(
+                mytext, startPos, currentRule.rule, {}, tempObject
+            )
 
-        return pos
-    elif isinstance(rule, Attr):
-        if isinstance(rule.attrClasses, SelectionFirst) and all(
+        return startPos
+    elif isinstance(currentRule, Attr):
+        if isinstance(currentRule.attrClasses, SelectionFirst) and all(
             isinstance(cls, GrammarClass)
             or (
                 isinstance(cls, fw.OpaqueFwRef)
                 and isinstance(cls.get_ref(), GrammarClass)
             )
-            for cls in rule.attrClasses.options
+            for cls in currentRule.attrClasses.options
         ):
-            optionsrule = rule.attrClasses
-        elif isinstance(rule.attrClasses, GrammarClass) or (
-            isinstance(rule.attrClasses, fw.OpaqueFwRef)
-            and isinstance(rule.attrClasses.get_ref(), GrammarClass)
+            optionsrule = currentRule.attrClasses
+        elif isinstance(currentRule.attrClasses, GrammarClass) or (
+            isinstance(currentRule.attrClasses, fw.OpaqueFwRef)
+            and isinstance(currentRule.attrClasses.get_ref(), GrammarClass)
         ):
-            optionsrule = SelectionFirst(rule.attrClasses)
+            optionsrule = SelectionFirst(currentRule.attrClasses)
         else:
             raise ValueError(
                 f"An attribute rule's attrClasses must be of GrammarClass or SelectionFirst[GrammarClass] type."
@@ -263,14 +289,18 @@ def parseLeftRecursive(
                 attrClass = attrClass.get_ref()
 
             newSyntaxObject: SyntaxObject = attrClass()
-            newSyntaxObjectSpan = (pos, -1)
+            newSyntaxObjectSpan = (startPos, -1)
 
-            newpos = parseLeftRecursive(
-                mytext, pos, attrClass.grammar, ruleId2recursionContext, newSyntaxObject
+            newPos = parseLeftRecursive(
+                mytext,
+                startPos,
+                attrClass.grammar,
+                ruleId2recursionContext,
+                newSyntaxObject,
             )
 
-            if newpos is not None:
-                newSyntaxObjectSpan = (newSyntaxObjectSpan[0], newpos)
+            if newPos is not None:
+                newSyntaxObjectSpan = (newSyntaxObjectSpan[0], newPos)
 
                 # Satisfy the TextSaver modifier
                 if isinstance(newSyntaxObject, mod.TextSaver):
@@ -287,27 +317,33 @@ def parseLeftRecursive(
                     trySelfReplace = False
                     nextSyntaxObjectOptions = []
                     for opt in newSyntaxObjectOptions:
-                        if isinstance(opt, mod.SelfReplacable) and "self" in opt.so_grammarAttributeNames:
+                        if (
+                            isinstance(opt, mod.SelfReplacable)
+                            and "self" in opt.so_grammarAttributeNames
+                        ):
                             trySelfReplace = True
                             nextSyntaxObjectOptions.extend(opt.self)
                         else:
                             nextSyntaxObjectOptions.append(opt)
                     newSyntaxObjectOptions = nextSyntaxObjectOptions
 
-                if rule.name in attrStore.so_grammarAttributeNames:
-                    grammarAttrOptions: list = getattr(attrStore, rule.name)
+                if currentRule.name in currentObject.so_grammarAttributeNames:
+                    grammarAttrOptions: list = getattr(currentObject, currentRule.name)
                 else:
                     grammarAttrOptions = []
-                    attrStore.so_grammarAttributeNames.add(rule.name)
-                    setattr(attrStore, rule.name, grammarAttrOptions)
+                    currentObject.so_grammarAttributeNames.add(currentRule.name)
+                    setattr(currentObject, currentRule.name, grammarAttrOptions)
                 grammarAttrOptions.extend(newSyntaxObjectOptions)
 
-                return newpos
+                return newPos
         return None
-    elif isinstance(rule, GrammarClass):
-        print(f"Trying to parse {rule.__name__}")
+    elif isinstance(currentRule, GrammarClass):
         return parseLeftRecursive(
-            mytext, pos, rule.grammar, ruleId2recursionContext, attrStore
+            mytext,
+            startPos,
+            currentRule.grammar,
+            ruleId2recursionContext,
+            currentObject,
         )
     else:
         raise ValueError(f"The rule argument is not of a GrammarRule type")

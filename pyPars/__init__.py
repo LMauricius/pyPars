@@ -7,7 +7,7 @@ from ._rules import (
     Attr,
     atr,
     SelectionFirst,
-    SelectionShortest,
+    Selection,
     SelectionLongest,
     GrammarClass,
     GrammarRule,

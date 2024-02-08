@@ -1,9 +1,12 @@
 from dataclasses import dataclass, field
-from typing import Union, Callable
+from typing import Union, Callable, Iterable
 from .text import Text, NatT, PosT, PatternT, MatchT
 from ._syntax_object import SyntaxObject
 
-import forward_decl as fw
+
+@dataclass
+class Concat:
+    items: Iterable["GrammarRule"]
 
 
 @dataclass
@@ -22,37 +25,29 @@ class ZeroOrMore:
 
 
 class Attr:
-    def __init__(self, name: str, attrClasses: "GrammarClass|SelectionFirst|str") -> None:
+    def __init__(self, name: str, attrClasses: "GrammarClass|SelectionFirst") -> None:
         self.name = name
-        if isinstance(attrClasses, str):
-            self.attrClasses = SelectionFirst(*[
-                fw.OpaqueFwRef(id) for id in attrClasses.split('/')
-            ])
-        elif isinstance(attrClasses, SelectionFirst):
+        if isinstance(attrClasses, SelectionFirst):
             self.attrClasses = attrClasses
         else:
             self.attrClasses = SelectionFirst(attrClasses)
 
     def __repr__(self) -> str:
-        classNames = self.attrClasses.__name__ if isinstance(self.attrClasses, GrammarClass) else \
-            '/'.join([
-                repr(attrClass)
-                for attrClass in self.attrClasses.options
-            ])
-        return f"Attr('{self.name}', {classNames})"
-
-def atr(name: str) -> Callable[["GrammarClass|SelectionFirst|str"], Attr]:
-    return lambda attrClasses: Attr(name, attrClasses)
+        classNames = "/".join(
+            [repr(attrClass) for attrClass in self.attrClasses.options]
+        )
+        return f"'{{{self.name}':{classNames}}}"
 
 
 class SelectionFirst:
     def __init__(self, *options: "GrammarRule|SelectionFirst") -> None:
         self.options = [
-            opt 
+            opt
             for options in [
-                opt.options if isinstance(opt, SelectionFirst) else [opt] for opt in options
+                opt.options if isinstance(opt, SelectionFirst) else [opt]
+                for opt in options
             ]
-            for opt in options 
+            for opt in options
         ]
 
     def __truediv__(self, right: "GrammarRule"):
@@ -68,66 +63,34 @@ class SelectionFirst:
             return SelectionFirst(*([left] + self.options))
 
     def __repr__(self) -> str:
-        return '/'.join([
-                repr(opt)
-                for opt in self.options
-            ])
+        return "/".join([repr(opt) for opt in self.options])
 
-class SelectionShortest:
-    def __init__(self, option1: "GrammarRule|SelectionShortest", *otheroptions: "GrammarRule|SelectionShortest") -> None:
-        self.options = (option1.options if isinstance(option1, SelectionShortest) else [option1]) + [
-            opt 
+
+class Selection:
+    def __init__(self, *options: "GrammarRule|Selection") -> None:
+        self.options = [
+            opt
             for options in [
-                opt.options if isinstance(opt, SelectionShortest) else [opt] for opt in otheroptions
+                opt.options if isinstance(opt, Selection) else [opt]
+                for opt in options
             ]
-            for opt in options 
+            for opt in options
         ]
 
     def __or__(self, right: "GrammarRule"):
-        if isinstance(right, SelectionShortest):
-            return SelectionShortest(*(self.options + right.options))
+        if isinstance(right, Selection):
+            return Selection(*(self.options + right.options))
         else:
-            return SelectionShortest(*(self.options + [right]))
+            return Selection(*(self.options + [right]))
 
     def __ror__(self, left: "GrammarRule"):
-        if isinstance(left, SelectionShortest):
-            return SelectionShortest(*(left.options + self.options))
+        if isinstance(left, Selection):
+            return Selection(*(left.options + self.options))
         else:
-            return SelectionShortest(*([left] + self.options))
+            return Selection(*([left] + self.options))
 
     def __repr__(self) -> str:
-        return '|'.join([
-                repr(opt)
-                for opt in self.options
-            ])
-
-class SelectionLongest:
-    def __init__(self, option1: "GrammarRule|SelectionLongest", *otheroptions: "GrammarRule|SelectionLongest") -> None:
-        self.options = (option1.options if isinstance(option1, SelectionLongest) else [option1]) + [
-            opt 
-            for options in [
-                opt.options if isinstance(opt, SelectionLongest) else [opt] for opt in otheroptions
-            ]
-            for opt in options 
-        ]
-
-    def __floordiv__(self, right: "GrammarRule"):
-        if isinstance(right, SelectionLongest):
-            return SelectionLongest(*(self.options + right.options))
-        else:
-            return SelectionLongest(*(self.options + [right]))
-
-    def __rfloordiv__(self, left: "GrammarRule"):
-        if isinstance(left, SelectionLongest):
-            return SelectionLongest(*(left.options + self.options))
-        else:
-            return SelectionLongest(*([left] + self.options))
-
-    def __repr__(self) -> str:
-        return '//'.join([
-                repr(opt)
-                for opt in self.options
-            ])
+        return "|".join([repr(opt) for opt in self.options])
 
 
 class GrammarClass(type[SyntaxObject]):
@@ -161,50 +124,38 @@ class GrammarClass(type[SyntaxObject]):
             return SelectionFirst(*[left, cls])
 
     def __or__(cls, right: "GrammarRule"):
-        if isinstance(right, SelectionShortest):
-            return SelectionShortest(*([cls] + right.options))
+        if isinstance(right, Selection):
+            return Selection(*([cls] + right.options))
         else:
-            return SelectionShortest(*[cls, right])
+            return Selection(*[cls, right])
 
     def __ror__(cls, left: "GrammarRule"):
-        if isinstance(left, SelectionShortest):
-            return SelectionShortest(*(left.options + [cls]))
+        if isinstance(left, Selection):
+            return Selection(*(left.options + [cls]))
         else:
-            return SelectionShortest(*[left, cls])
-
-    def __floordiv__(cls, right: "GrammarRule"):
-        if isinstance(right, SelectionLongest):
-            return SelectionLongest(*([cls] + right.options))
-        else:
-            return SelectionLongest(*[cls, right])
-
-    def __rfloordiv__(cls, left: "GrammarRule"):
-        if isinstance(left, SelectionLongest):
-            return SelectionLongest(*(left.options + [cls]))
-        else:
-            return SelectionLongest(*[left, cls])
+            return Selection(*[left, cls])
 
     def __repr__(self) -> str:
         return self.__name__
 
 
-AttributeClass = Union[
-    "GrammarClass", list["GrammarClass"], Union["GrammarClass", "GrammarClass"]
-]
-
-GrammarRule = Union[
-    None,
+CanonGrammarRule = Union[
     NatT,
     PatternT,
-    tuple["GrammarRule"],  # For concatenation
-    SelectionFirst,  # For multiple options (Union of grammars)
-    SelectionShortest,  # For multiple options (Union of grammars)
-    SelectionLongest,  # For multiple options (Union of grammars)
+    Concat,  # For concatenation
     Opt,  # ? operator
-    list["GrammarRule"],  # Also ? operator
     OneOrMore,  # + operator
     ZeroOrMore,  # * operator
     Attr,  # For named attributes
+    SelectionFirst,  # For multiple options (Union of grammars)
+    Selection,  # For multiple options (Union of grammars)
     GrammarClass,  # Class containing a 'grammar' class variable
-    fw.OpaqueFwRef, # A forward reference to a rule
 ]
+
+
+GrammarRule = (
+    CanonGrammarRule
+    | tuple["GrammarRule"]
+    | list["GrammarRule"]
+    | dict[str, "GrammarClass|SelectionFirst"]
+)

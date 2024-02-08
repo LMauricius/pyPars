@@ -14,7 +14,7 @@ class SyntaxObject(ModularDictMethodObject):
             set() if grammarAttributeNames is None else grammarAttributeNames
         )
 
-        self.so_options = [] if options is None else options
+        self.so_options: list["SyntaxObject"] = [] if options is None else options
 
         self._dict_extractor_modules.append(
             lambda self: (
